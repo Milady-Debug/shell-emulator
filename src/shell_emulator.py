@@ -1,8 +1,9 @@
 """Эмулятор командной строки UNIX-подобной ОС.
 
-Этап 1. REPL — минимальный прототип с заглушками команд.
+Этап 2. Конфигурация: аргументы командной строки и стартовый скрипт.
 """
 
+import argparse
 import os
 import socket
 import sys
@@ -11,15 +12,22 @@ import sys
 class ShellEmulator:
     """Эмулятор командной строки. Реализует цикл REPL."""
 
-    def __init__(self, vfs_name: str = "VFS") -> None:
+    def __init__(
+        self,
+        vfs_path: str | None = None,
+        script_path: str | None = None,
+    ) -> None:
         """Создать эмулятор.
 
         Args:
-            vfs_name: имя виртуальной файловой системы,
-                отображаемое в приглашении к вводу.
+            vfs_path: путь к файлу виртуальной файловой системы.
+            script_path: путь к стартовому скрипту с командами.
         """
-        self.vfs_name = vfs_name
+        self.vfs_path = vfs_path
+        self.script_path = script_path
         self.running = True
+
+    # ---------- Приглашение и парсер ----------
 
     def get_prompt(self) -> str:
         """Сформировать приглашение к вводу на основе данных ОС."""
@@ -39,9 +47,9 @@ class ShellEmulator:
             return os.getlogin()
         except OSError:
             return (
-                    os.environ.get("USER")
-                    or os.environ.get("USERNAME")
-                    or "user"
+                os.environ.get("USER")
+                or os.environ.get("USERNAME")
+                or "user"
             )
 
     @staticmethod
@@ -51,6 +59,17 @@ class ShellEmulator:
         if not parts:
             return "", []
         return parts[0], parts[1:]
+
+    # ---------- Отладочный вывод параметров ----------
+
+    def dump_config(self) -> None:
+        """Вывести отладочную информацию о параметрах запуска."""
+        print("=== Параметры эмулятора ===")
+        print(f"vfs_path    = {self.vfs_path!r}")
+        print(f"script_path = {self.script_path!r}")
+        print("===========================")
+
+    # ---------- Диспетчер команд ----------
 
     def execute(self, command: str, args: list[str]) -> str:
         """Выполнить команду и вернуть строку с результатом."""
@@ -77,9 +96,52 @@ class ShellEmulator:
         self.running = False
         return "Выход из эмулятора."
 
+    # ---------- Выполнение стартового скрипта ----------
+
+    def run_script(self, path: str) -> None:
+        """Выполнить команды из стартового скрипта.
+
+        Ошибочные строки пропускаются, выполнение продолжается.
+        На экран выводится имитация диалога: приглашение + команда
+        + результат.
+        """
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                lines = handle.readlines()
+        except FileNotFoundError:
+            print(f"Ошибка: стартовый скрипт '{path}' не найден.")
+            return
+
+        for raw in lines:
+            line = raw.rstrip("\n")
+            stripped = line.strip()
+            # Пропускаем пустые строки и комментарии.
+            if not stripped or stripped.startswith("#"):
+                continue
+            print(f"{self.get_prompt()}{line}")
+            try:
+                command, args = self.parse_command(line)
+                result = self.execute(command, args)
+            except Exception as error:  # noqa: BLE001
+                print(f"Ошибка при выполнении '{line}': {error}")
+                continue
+            if result:
+                print(result)
+            # Если команда была exit — прекращаем выполнение скрипта.
+            if not self.running:
+                break
+
+    # ---------- Основной цикл ----------
+
     def run(self) -> None:
         """Запустить цикл REPL."""
-        print(f"Добро пожаловать в эмулятор оболочки ({self.vfs_name}).")
+        self.dump_config()
+        if self.script_path:
+            print(f"Выполняется стартовый скрипт: {self.script_path}")
+            self.run_script(self.script_path)
+            if not self.running:
+                return
+        print("Добро пожаловать в эмулятор оболочки.")
         print("Введите 'exit' для выхода.")
         while self.running:
             try:
@@ -93,9 +155,36 @@ class ShellEmulator:
                 print(result)
 
 
+# ---------- Точка входа ----------
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    """Собрать парсер аргументов командной строки."""
+    parser = argparse.ArgumentParser(
+        prog="shell_emulator",
+        description="Эмулятор командной строки UNIX-подобной ОС.",
+    )
+    parser.add_argument(
+        "--vfs-path",
+        dest="vfs_path",
+        default=None,
+        help="Путь к CSV-файлу виртуальной файловой системы.",
+    )
+    parser.add_argument(
+        "--script-path",
+        dest="script_path",
+        default=None,
+        help="Путь к стартовому скрипту с командами.",
+    )
+    return parser
+
+
 def main() -> int:
     """Точка входа в приложение."""
-    emulator = ShellEmulator(vfs_name="VFS")
+    args = build_arg_parser().parse_args()
+    emulator = ShellEmulator(
+        vfs_path=args.vfs_path,
+        script_path=args.script_path,
+    )
     emulator.run()
     return 0
 
