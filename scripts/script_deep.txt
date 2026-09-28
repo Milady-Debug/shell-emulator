@@ -1,0 +1,16 @@
+# Расширенный тест: cp и rmdir на разных уровнях
+cd home
+cd user
+ls
+cp readme.txt readme_copy.txt
+cp readme_copy.txt readme_copy2.txt
+ls
+rmdir docs
+cd docs
+rmdir reports
+ls
+cd ..
+cd ..
+cd
+tree
+exit
