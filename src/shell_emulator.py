@@ -1,14 +1,17 @@
 """Эмулятор командной строки UNIX-подобной ОС.
 
-Этап 3. VFS: виртуальная файловая система на основе CSV.
+Этап 4. Реальные команды ls, cd, tree, cal, uname.
 """
 
 import argparse
 import base64
+import calendar
 import csv
 import os
+import platform
 import socket
 import sys
+from datetime import datetime
 
 
 class VFSNode:
@@ -49,7 +52,7 @@ class VFS:
     def load_from_csv(self, path: str) -> None:
         """Загрузить VFS из CSV-файла.
 
-        Формат строки: path,is_dir,content_base64.
+        Формат строки: path, is_dir,content_base64.
         Вложенность восстанавливается из полного пути.
         """
         with open(path, "r", encoding="utf-8") as handle:
@@ -182,19 +185,110 @@ class ShellEmulator:
             return self.cmd_ls(args)
         if command == "cd":
             return self.cmd_cd(args)
+        if command == "tree":
+            return self.cmd_tree(args)
+        if command == "cal":
+            return self.cmd_cal(args)
+        if command == "uname":
+            return self.cmd_uname(args)
         if command == "exit":
             return self.cmd_exit(args)
         if command == "":
             return ""
         return f"Ошибка: неизвестная команда '{command}'"
 
+    # ---------- Команда ls ----------
+
     def cmd_ls(self, args: list[str]) -> str:
-        """Заглушка команды ls."""
-        return f"Заглушка ls. Аргументы: {args}"
+        """Вывести содержимое текущего каталога.
+
+        Абсолютные пути не поддерживаются. Если переданы лишние
+        аргументы — выводится предупреждение.
+        """
+        if args:
+            return (
+                "Ошибка: ls не поддерживает аргументы в этой версии. "
+                f"Получено: {args}"
+            )
+        names = sorted(self.vfs.current_dir.children.keys())
+        if not names:
+            return ""
+        return "\n".join(names)
+
+    # ---------- Команда cd ----------
 
     def cmd_cd(self, args: list[str]) -> str:
-        """Заглушка команды cd."""
-        return f"Заглушка cd. Аргументы: {args}"
+        """Перейти в подкаталог текущего каталога.
+
+        - без аргументов или `..` — переход в корень VFS;
+        - `<имя>` — переход в подкаталог, если он существует.
+        """
+        if not args or args[0] == "..":
+            self.vfs.current_dir = self.vfs.root
+            return ""
+        if len(args) > 1:
+            return f"Ошибка: cd принимает один аргумент, получено {args}"
+        target = args[0]
+        children = self.vfs.current_dir.children
+        if target not in children:
+            return f"Ошибка: каталог '{target}' не найден."
+        node = children[target]
+        if not node.is_dir:
+            return f"Ошибка: '{target}' не является каталогом."
+        self.vfs.current_dir = node
+        return ""
+
+    # ---------- Команда tree ----------
+
+    def cmd_tree(self, args: list[str]) -> str:
+        """Вывести дерево текущего каталога.
+
+        Рекурсивный обход с символами ├── и └──.
+        """
+        if args:
+            return f"Ошибка: tree не принимает аргументов, получено: {args}"
+        lines = self._tree_lines(self.vfs.current_dir)
+        if not lines:
+            return "."
+        return "\n".join(lines)
+
+    def _tree_lines(
+        self,
+        node: VFSNode,
+        prefix: str = "",
+    ) -> list[str]:
+        """Сформировать строки дерева для узла и его потомков."""
+        lines: list[str] = []
+        children = sorted(node.children.values(), key=lambda n: n.name)
+        for index, child in enumerate(children):
+            is_last = index == len(children) - 1
+            connector = "└── " if is_last else "├── "
+            lines.append(f"{prefix}{connector}{child.name}")
+            if child.is_dir and child.children:
+                extension = "    " if is_last else "│   "
+                lines.extend(self._tree_lines(child, prefix + extension))
+        return lines
+
+    # ---------- Команда cal ----------
+
+    def cmd_cal(self, args: list[str]) -> str:
+        """Вывести календарь на текущий месяц."""
+        if args:
+            return f"Ошибка: cal не принимает аргументов, получено: {args}"
+        now = datetime.now()
+        return calendar.month(now.year, now.month)
+
+    # ---------- Команда uname ----------
+
+    def cmd_uname(self, args: list[str]) -> str:
+        """Вывести информацию о системе."""
+        if args:
+            return f"Ошибка: uname не принимает аргументов, получено: {args}"
+        system = platform.system()
+        release = platform.release()
+        return f"{system} {release}"
+
+    # ---------- Команда exit ----------
 
     def cmd_exit(self, args: list[str]) -> str:
         """Завершить работу эмулятора."""

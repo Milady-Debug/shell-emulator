@@ -1,7 +1,14 @@
-# Расширенный тест: команды с аргументами
+# Расширенный тест: навигация по глубокой VFS
+tree
+cd home
+tree
+cd user
 ls
-ls -l
-cd /home/user
+cd docs
+ls
+tree
 cd ..
-неизвестная_команда
+cd ..
+cd
+ls
 exit
