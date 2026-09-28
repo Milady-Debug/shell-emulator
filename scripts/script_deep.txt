@@ -1,0 +1,14 @@
+# Расширенный тест: навигация по глубокой VFS
+tree
+cd home
+tree
+cd user
+ls
+cd docs
+ls
+tree
+cd ..
+cd ..
+cd
+ls
+exit

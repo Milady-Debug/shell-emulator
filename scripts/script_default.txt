@@ -1,0 +1,11 @@
+# Тестовый стартовый скрипт (этап 4)
+# Проверка реальных ls и cd
+ls
+cd home
+ls
+cd user
+ls
+tree
+cal
+uname
+exit
