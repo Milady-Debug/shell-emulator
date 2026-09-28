@@ -1,12 +1,96 @@
 """Эмулятор командной строки UNIX-подобной ОС.
 
-Этап 2. Конфигурация: аргументы командной строки и стартовый скрипт.
+Этап 3. VFS: виртуальная файловая система на основе CSV.
 """
 
 import argparse
+import base64
+import csv
 import os
 import socket
 import sys
+
+
+class VFSNode:
+    """Узел виртуальной файловой системы."""
+
+    def __init__(
+        self,
+        name: str,
+        is_dir: bool = True,
+        content: bytes | None = None,
+    ) -> None:
+        """Создать узел.
+
+        Args:
+            name: имя файла или каталога.
+            is_dir: True для каталога, False для файла.
+            content: содержимое файла (bytes) или None.
+        """
+        self.name = name
+        self.is_dir = is_dir
+        self.content = content
+        self.children: dict[str, "VFSNode"] = {}
+
+    def add_child(self, node: "VFSNode") -> None:
+        """Добавить дочерний узел."""
+        self.children[node.name] = node
+
+
+class VFS:
+    """Виртуальная файловая система в памяти."""
+
+    def __init__(self, name: str = "VFS") -> None:
+        """Создать пустую VFS с корневым каталогом."""
+        self.name = name
+        self.root = VFSNode("/", is_dir=True)
+        self.current_dir = self.root
+
+    def load_from_csv(self, path: str) -> None:
+        """Загрузить VFS из CSV-файла.
+
+        Формат строки: path,is_dir,content_base64.
+        Вложенность восстанавливается из полного пути.
+        """
+        with open(path, "r", encoding="utf-8") as handle:
+            reader = csv.DictReader(handle)
+            for row in reader:
+                self._add_from_row(row)
+
+    def _add_from_row(self, row: dict[str, str]) -> None:
+        """Добавить узел в дерево на основе строки CSV."""
+        raw_path = row.get("path") or ""
+        path = raw_path.strip()
+        is_dir = (row.get("is_dir") or "").strip() == "1"
+        content_b64 = (row.get("content_base64") or "").strip()
+
+        content = None
+        if content_b64:
+            content = base64.b64decode(content_b64)
+
+        parts = [p for p in path.split("/") if p]
+        current = self.root
+        for index, part in enumerate(parts):
+            is_last = index == len(parts) - 1
+            if part not in current.children:
+                node = VFSNode(
+                    name=part,
+                    is_dir=is_dir if is_last else True,
+                    content=content if is_last else None,
+                )
+                current.add_child(node)
+            current = current.children[part]
+
+    def count_nodes(self) -> int:
+        """Подсчитать количество узлов, кроме корня."""
+        return self._count_children(self.root)
+
+    def _count_children(self, node: VFSNode) -> int:
+        """Рекурсивно подсчитать всех потомков узла."""
+        total = len(node.children)
+        for child in node.children.values():
+            total += self._count_children(child)
+        return total
 
 
 class ShellEmulator:
@@ -16,15 +100,18 @@ class ShellEmulator:
         self,
         vfs_path: str | None = None,
         script_path: str | None = None,
+        vfs_name: str = "VFS",
     ) -> None:
         """Создать эмулятор.
 
         Args:
-            vfs_path: путь к файлу виртуальной файловой системы.
-            script_path: путь к стартовому скрипту с командами.
+            vfs_path: путь к CSV-файлу виртуальной ФС.
+            script_path: путь к стартовому скрипту.
+            vfs_name: имя виртуальной ФС.
         """
         self.vfs_path = vfs_path
         self.script_path = script_path
+        self.vfs = VFS(name=vfs_name)
         self.running = True
 
     # ---------- Приглашение и парсер ----------
@@ -60,6 +147,22 @@ class ShellEmulator:
             return "", []
         return parts[0], parts[1:]
 
+    # ---------- Загрузка VFS ----------
+
+    def _load_vfs(self) -> None:
+        """Загрузить VFS из файла, если указан путь."""
+        if not self.vfs_path:
+            return
+        try:
+            self.vfs.load_from_csv(self.vfs_path)
+        except FileNotFoundError:
+            print(
+                f"Ошибка: файл VFS '{self.vfs_path}' не найден. "
+                "Используется пустая VFS."
+            )
+        except (csv.Error, ValueError) as error:
+            print(f"Ошибка загрузки VFS '{self.vfs_path}': {error}")
+
     # ---------- Отладочный вывод параметров ----------
 
     def dump_config(self) -> None:
@@ -67,6 +170,8 @@ class ShellEmulator:
         print("=== Параметры эмулятора ===")
         print(f"vfs_path    = {self.vfs_path!r}")
         print(f"script_path = {self.script_path!r}")
+        print(f"vfs_name    = {self.vfs.name!r}")
+        print(f"vfs_nodes   = {self.vfs.count_nodes()}")
         print("===========================")
 
     # ---------- Диспетчер команд ----------
@@ -102,8 +207,7 @@ class ShellEmulator:
         """Выполнить команды из стартового скрипта.
 
         Ошибочные строки пропускаются, выполнение продолжается.
-        На экран выводится имитация диалога: приглашение + команда
-        + результат.
+        На экран выводится имитация диалога.
         """
         try:
             with open(path, "r", encoding="utf-8") as handle:
@@ -115,7 +219,6 @@ class ShellEmulator:
         for raw in lines:
             line = raw.rstrip("\n")
             stripped = line.strip()
-            # Пропускаем пустые строки и комментарии.
             if not stripped or stripped.startswith("#"):
                 continue
             print(f"{self.get_prompt()}{line}")
@@ -127,7 +230,6 @@ class ShellEmulator:
                 continue
             if result:
                 print(result)
-            # Если команда была exit — прекращаем выполнение скрипта.
             if not self.running:
                 break
 
@@ -135,6 +237,7 @@ class ShellEmulator:
 
     def run(self) -> None:
         """Запустить цикл REPL."""
+        self._load_vfs()
         self.dump_config()
         if self.script_path:
             print(f"Выполняется стартовый скрипт: {self.script_path}")
