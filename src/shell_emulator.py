@@ -1,11 +1,12 @@
 """Эмулятор командной строки UNIX-подобной ОС.
 
-Этап 4. Реальные команды ls, cd, tree, cal, uname.
+Этап 5. Дополнительные команды cp и rmdir.
 """
 
 import argparse
 import base64
 import calendar
+import copy
 import csv
 import os
 import platform
@@ -52,7 +53,7 @@ class VFS:
     def load_from_csv(self, path: str) -> None:
         """Загрузить VFS из CSV-файла.
 
-        Формат строки: path, is_dir,content_base64.
+        Формат строки: path,is_dir,content_base64.
         Вложенность восстанавливается из полного пути.
         """
         with open(path, "r", encoding="utf-8") as handle:
@@ -181,30 +182,27 @@ class ShellEmulator:
 
     def execute(self, command: str, args: list[str]) -> str:
         """Выполнить команду и вернуть строку с результатом."""
-        if command == "ls":
-            return self.cmd_ls(args)
-        if command == "cd":
-            return self.cmd_cd(args)
-        if command == "tree":
-            return self.cmd_tree(args)
-        if command == "cal":
-            return self.cmd_cal(args)
-        if command == "uname":
-            return self.cmd_uname(args)
-        if command == "exit":
-            return self.cmd_exit(args)
-        if command == "":
+        if not command:
             return ""
-        return f"Ошибка: неизвестная команда '{command}'"
+        handlers = {
+            "ls": self.cmd_ls,
+            "cd": self.cmd_cd,
+            "tree": self.cmd_tree,
+            "cal": self.cmd_cal,
+            "uname": self.cmd_uname,
+            "cp": self.cmd_cp,
+            "rmdir": self.cmd_rmdir,
+            "exit": self.cmd_exit,
+        }
+        handler = handlers.get(command)
+        if handler is None:
+            return f"Ошибка: неизвестная команда '{command}'"
+        return handler(args)
 
     # ---------- Команда ls ----------
 
     def cmd_ls(self, args: list[str]) -> str:
-        """Вывести содержимое текущего каталога.
-
-        Абсолютные пути не поддерживаются. Если переданы лишние
-        аргументы — выводится предупреждение.
-        """
+        """Вывести содержимое текущего каталога."""
         if args:
             return (
                 "Ошибка: ls не поддерживает аргументы в этой версии. "
@@ -218,11 +216,7 @@ class ShellEmulator:
     # ---------- Команда cd ----------
 
     def cmd_cd(self, args: list[str]) -> str:
-        """Перейти в подкаталог текущего каталога.
-
-        - без аргументов или `..` — переход в корень VFS;
-        - `<имя>` — переход в подкаталог, если он существует.
-        """
+        """Перейти в подкаталог текущего каталога."""
         if not args or args[0] == "..":
             self.vfs.current_dir = self.vfs.root
             return ""
@@ -241,10 +235,7 @@ class ShellEmulator:
     # ---------- Команда tree ----------
 
     def cmd_tree(self, args: list[str]) -> str:
-        """Вывести дерево текущего каталога.
-
-        Рекурсивный обход с символами ├── и └──.
-        """
+        """Вывести дерево текущего каталога."""
         if args:
             return f"Ошибка: tree не принимает аргументов, получено: {args}"
         lines = self._tree_lines(self.vfs.current_dir)
@@ -287,6 +278,52 @@ class ShellEmulator:
         system = platform.system()
         release = platform.release()
         return f"{system} {release}"
+
+    # ---------- Команда cp ----------
+
+    def cmd_cp(self, args: list[str]) -> str:
+        """Скопировать файл или каталог в текущем каталоге.
+
+        Используется глубокое копирование, чтобы изменения копии не
+        влияли на оригинал. Все операции выполняются только в памяти.
+        """
+        if len(args) != 2:
+            return (
+                "Ошибка: cp требует ровно два аргумента "
+                "(источник и приёмник)."
+            )
+        source, target = args
+        children = self.vfs.current_dir.children
+        if source not in children:
+            return f"Ошибка: источник '{source}' не найден."
+        if target in children:
+            return f"Ошибка: '{target}' уже существует."
+        new_node = copy.deepcopy(children[source])
+        new_node.name = target
+        self.vfs.current_dir.add_child(new_node)
+        return ""
+
+    # ---------- Команда rmdir ----------
+
+    def cmd_rmdir(self, args: list[str]) -> str:
+        """Удалить пустой каталог в текущем каталоге.
+
+        Каталог должен существовать, быть каталогом и быть пустым.
+        Удаление происходит только в памяти.
+        """
+        if len(args) != 1:
+            return "Ошибка: rmdir требует ровно один аргумент."
+        target = args[0]
+        children = self.vfs.current_dir.children
+        if target not in children:
+            return f"Ошибка: каталог '{target}' не найден."
+        node = children[target]
+        if not node.is_dir:
+            return f"Ошибка: '{target}' не является каталогом."
+        if node.children:
+            return f"Ошибка: каталог '{target}' не пуст."
+        del children[target]
+        return ""
 
     # ---------- Команда exit ----------
 

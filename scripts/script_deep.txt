@@ -1,14 +1,16 @@
-# Расширенный тест: навигация по глубокой VFS
-tree
+# Расширенный тест: cp и rmdir на разных уровнях
 cd home
-tree
 cd user
 ls
-cd docs
+cp readme.txt readme_copy.txt
+cp readme_copy.txt readme_copy2.txt
 ls
-tree
+rmdir docs
+cd docs
+rmdir reports
+ls
 cd ..
 cd ..
 cd
-ls
+tree
 exit
