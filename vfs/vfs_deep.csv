@@ -1,0 +1,9 @@
+path,is_dir,content_base64
+/,1,
+/home,1,
+/home/user,1,
+/home/user/readme.txt,0,SGVsbG8=
+/home/user/docs,1,
+/home/user/docs/notes.txt,0,Tm90ZXM=
+/home/user/docs/reports,1,
+/home/user/docs/reports/2026.txt,0,
