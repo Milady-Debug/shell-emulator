@@ -1,6 +1,6 @@
 """Эмулятор командной строки UNIX-подобной ОС.
 
-Этап 1. REPL — минимальный прототип с заглушками команд.
+Этап 1. REPL с заглушками команд.
 """
 
 import os
@@ -9,94 +9,54 @@ import sys
 
 
 class ShellEmulator:
-    """Эмулятор командной строки. Реализует цикл REPL."""
+    """Эмулятор командной строки."""
 
-    def __init__(self, vfs_name: str = "VFS") -> None:
-        """Создать эмулятор.
-
-        Args:
-            vfs_name: имя виртуальной файловой системы,
-                отображаемое в приглашении к вводу.
-        """
-        self.vfs_name = vfs_name
+    def __init__(self):
+        """Создать эмулятор."""
         self.running = True
 
-    def get_prompt(self) -> str:
-        """Сформировать приглашение к вводу на основе данных ОС."""
-        username = self._get_username()
+    def get_prompt(self):
+        """Сформировать приглашение на основе данных ОС."""
+        try:
+            username = os.getlogin()
+        except OSError:
+            username = os.environ.get("USER") or "user"
         hostname = socket.gethostname()
         return f"{username}@{hostname}:~$ "
 
-    @staticmethod
-    def _get_username() -> str:
-        """Получить имя текущего пользователя.
-
-        os.getlogin() может выбросить исключение, если у процесса нет
-        управляющего терминала. В этом случае используем переменные
-        окружения как запасной вариант.
-        """
-        try:
-            return os.getlogin()
-        except OSError:
-            return (
-                    os.environ.get("USER")
-                    or os.environ.get("USERNAME")
-                    or "user"
-            )
-
-    @staticmethod
-    def parse_command(line: str) -> tuple[str, list[str]]:
-        """Разобрать строку на команду и аргументы по пробелам."""
-        parts = line.strip().split()
-        if not parts:
-            return "", []
-        return parts[0], parts[1:]
-
-    def execute(self, command: str, args: list[str]) -> str:
-        """Выполнить команду и вернуть строку с результатом."""
+    def execute(self, command, args):
+        """Выполнить команду."""
         if command == "ls":
-            return self.cmd_ls(args)
+            return f"Заглушка ls. Аргументы: {args}"
         if command == "cd":
-            return self.cmd_cd(args)
+            return f"Заглушка cd. Аргументы: {args}"
         if command == "exit":
-            return self.cmd_exit(args)
-        if command == "":
+            self.running = False
+            return "Выход."
+        if not command:
             return ""
         return f"Ошибка: неизвестная команда '{command}'"
 
-    def cmd_ls(self, args: list[str]) -> str:
-        """Заглушка команды ls."""
-        return f"Заглушка ls. Аргументы: {args}"
-
-    def cmd_cd(self, args: list[str]) -> str:
-        """Заглушка команды cd."""
-        return f"Заглушка cd. Аргументы: {args}"
-
-    def cmd_exit(self, args: list[str]) -> str:
-        """Завершить работу эмулятора."""
-        self.running = False
-        return "Выход из эмулятора."
-
-    def run(self) -> None:
+    def run(self):
         """Запустить цикл REPL."""
-        print(f"Добро пожаловать в эмулятор оболочки ({self.vfs_name}).")
-        print("Введите 'exit' для выхода.")
+        print("Добро пожаловать в эмулятор оболочки.")
         while self.running:
             try:
                 line = input(self.get_prompt())
             except (EOFError, KeyboardInterrupt):
                 print()
                 break
-            command, args = self.parse_command(line)
+            parts = line.strip().split()
+            command = parts[0] if parts else ""
+            args = parts[1:] if parts else []
             result = self.execute(command, args)
             if result:
                 print(result)
 
 
-def main() -> int:
+def main():
     """Точка входа в приложение."""
-    emulator = ShellEmulator(vfs_name="VFS")
-    emulator.run()
+    ShellEmulator().run()
     return 0
 
 
