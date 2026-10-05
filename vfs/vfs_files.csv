@@ -1,0 +1,5 @@
+cat vfs/vfs_minimal.csv,is_dir,content_base64
+/,1,
+/readme.txt,0,SGVsbG8sIHdvcmxkIQ==
+/notes.txt,0,VGhpcyBpcyBhIG5vdGUu
+/config.ini,0,
