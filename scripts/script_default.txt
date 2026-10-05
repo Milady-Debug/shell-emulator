@@ -1,0 +1,14 @@
+# Тестовый стартовый скрипт (этап 5)
+# Проверка всех команд, включая cp и rmdir
+ls
+cd home
+ls
+cd user
+ls
+cp readme.txt backup.txt
+ls
+rmdir docs
+rmdir empty_dir
+foobar
+tree
+exit
